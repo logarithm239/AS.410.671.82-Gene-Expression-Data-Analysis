@@ -1,0 +1,107 @@
+---
+title: 'Lab #1 Basic R syntax/plots with data solutions'
+author: "Xulin Ge"
+date: "Jul 02 2023"
+---
+
+
+```{r, results='hide'}
+# Set the directory
+(WD <- getwd())
+if (!is.null(WD)) setwd(WD)
+```
+
+# Read `sle_b_cell.txt` text file into R
+```{r}
+# using the read.table() function
+txt_file <- "sle_b_cell.txt"
+raw_table <- read.table(file=file.path("data", txt_file), header=T, row.names=1)
+```
+
+### Look at the dimensions of the data
+There should be 26 samples.
+```{r}
+knitr::kable(head(raw_table), caption=" SLE B cell data set")
+```
+
+### Print the sample names to screen
+```{r}
+colnames(raw_table)
+```
+
+# Plot the second SLE patient sample versus the first normal control samples
+Select the sample
+```{r}
+x1 <- raw_table["control.1"][ , 1]
+y1 <- raw_table["sle.2"][ , 1]
+```
+### Plot in an xy scatter plot
+Label the x and y-axes as 'Normal' and 'SLE', respectively.
+Title the plot
+Add grey grid lines with the function `grid()`
+```{r}
+plot1 <- plot(x1, y1, xlab="Normal", ylab="SLE",
+    main="SLE B cell sample vs. Normal B cell sample – all probesets")
+grid()
+```
+
+# Do the same plot but pick only the first 20 probesets
+Pick only the first 20 probesets
+```{r}
+x2 <- x1[1:20]
+y2 <- y1[1:20]
+```
+Use the `pch=15` argument to change the shape and color the points blue with the `col` argument
+```{r}
+plot2 <- plot(x2, y2, xlab="Normal", ylab="SLE",
+    main="SLE B cell sample vs. Normal B cell sample – first 20 probesets",
+    pch=15, col="blue") + grid()
+```
+
+# Plot the following gene in a gene profile plot
+### IGLJ3 (immunoglobulin lambda joining 3), which is probeset ID `211881_x_at`.
+This type of plot has the sample indices across the x-axis and the intensities on the y-axis
+```{r}
+# sample indices across the x-axis
+x3 <- 1:26
+# intensities on the y-axis cast to numeric
+y3 <- as.numeric(raw_table["211881_x_at", ])
+```
+
+### First plot the ranges using the `type="n"` argument
+```{r}
+plot(range(x3), range(y3), type="n",
+    xlab="sample indices", ylab="intensities",
+    main="gene profile plot, ID = 211881_x_at") 
+```
+
+### Then add the genes with the `lines()` function call. Add grid lines
+```{r}
+plot(x3, y3,
+    xlab="Normal", ylab="SLE",
+    main="gene profile plot, ID = 211881_x_at",axes=F)
+lines(x3, y3)
+grid()
+# las=2: labels are perpendicular(=2) to axis
+axis(1, at=x3, colnames(raw_table), las=2, cex.lab=0.8)
+axis(2)
+```
+
+# Boxplot
+Another way to visualize a gene profile across conditions is to graph a boxplot
+with a single distribution box per condition.
+
+To do this, we need to create a factor vector that indicates the disease or normal condition like so: `f <- c(rep("SLE",17),rep("Control",9))`
+
+Then use this vector with the expression vector for IGLJ3 in the boxplot function to
+create the graph
+
+Add points with `stripchart()` function
+
+```{r}
+f <- c( rep("SLE",17), rep("Control",9) )
+boxplot(y3~f, main="gene profile boxplot, ID = 211881_x_at")
+stripchart(y3~f, add=TRUE, vertical=TRUE, pch=21, bg="blue")
+```
+
+
