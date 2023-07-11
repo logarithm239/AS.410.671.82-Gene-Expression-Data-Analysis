@@ -1,0 +1,258 @@
+---
+title: 'Lab #4 Normalization and Bioconductor'
+author: "Xulin Ge"
+date: "Jul 08 2023"
+---
+
+We will be working with a few data sets, each run on a different platform. 
+
+<br>
+
+The first data set is an R object generated from a 2-channel cDNA array that is called `swirl`. 
+
+This data set is an experiment that was run on a zebrafish to study the early development. “swirl is a point mutant in the BMP2 gene that affects the dorsal/ventral body axis.” The objective of the experiment was to evaluate the transcript differences between wildtype zebrafish and those with this mutation. 
+
+Because `swirl` is an R object, so the format and structure of this binary file has to be accessed through various R functions. If you type “swirl”, you will immediately see that there are attributes that make up this file (e.g. @maInfo) beyond the typical channel information. Included is metadata information that makes up the experimental parameters, in addition to the raw intensity data.
+
+<br>
+
+The second 2 data sets are raw intensity files – one from an Agilent platform and the other from an Affymetrix platform. 
+
+These are not R objects, rather the Agilent files are raw text files generated from the Agilent software and the Affymetrix files are raw binary files generated from the Affymetrix software.
+
+
+Since both R objects and raw data files are typically what an analyst is given when asked to analyze an experiment, this lab will give you experience processing raw intensity files and normalizing them appropriately. This is typically the first step in conducting any microarray analysis, so it is important to make sure that the data is normalized appropriately before beginning any subsequent steps
+
+
+```{r, warning=FALSE, message=FALSE}
+# installing/loading the package:
+if(!require(fpc)) {
+  install.packages("fpc"); 
+  require(fpc)
+}
+
+list.of.packages <- c("marray","affy","limma","affydata", "affyPLM", "fpc")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)>0) BiocManager::install(new.packages)
+```
+
+
+```{r, results='hide'}
+# Set the directory
+(WD <- getwd())
+if (!is.null(WD)) setwd(WD)
+```
+
+# `swirl` data set
+Load the marray library and the `swirl` data set
+```{r, warning=FALSE, message=FALSE}
+# Load the packages and dataset
+library(marray)
+data(swirl)
+dim(swirl)
+```
+
+### Non-normalized data
+Plot an MvA plot of array 3 without any stratified lines
+```{r}
+maPlot(swirl[,3], lines.func=NULL, legend.func=NULL, 
+	main='MvA plot of array 3')
+```
+
+### Global median location normalization
+Normalize array 3 by global median location normalization
+```{r}
+# Post-normalization using global median location normalization
+# median, for global median location normalization
+# loess, for global intensity location normalization
+mnorm_median <- maNorm(swirl[,3], norm="median")
+```
+
+Plot an MvA plot of the normalized array without the stratified lines or legend
+```{r}
+maPlot(mnorm_median, lines.func=NULL, legend.func=NULL, 
+	main='MvA plot of Normalized array 3 by global median location normalization')
+```
+
+If we compare normalized vs. non-normalized data, we can see that normalized data points moves up vertically along y axis. This indicates a simple constant has been added to each value
+
+
+### Loess global intensity normalization
+We will repeat steps above except replacing `median` to `loess`
+```{r}
+mnorm_loess <- maNorm(swirl[,3], norm="loess")
+maPlot(mnorm_loess, lines.func=NULL, legend.func=NULL, 
+	main='MvA plot of Normalized array 3 by loess global intensity normalization')
+```
+
+Loess global intensity normalization looks to be better for `swirl` array 3
+
+Because the data points seem to be less “curved” and more “even”, which means the normalization reduces differences between replicate samples. 
+
+
+# Raw GenePix files
+Next, we would like to read in raw GenePix files for 2 cDNA arrays that represent 2
+patient samples
+```{r}
+# using the read.GenePix() function
+a.cdna <- read.GenePix(path="data\\", name.Gf = "F532 Median",name.Gb ="B532 Median", name.Rf = "F635 Median", name.Rb = "B635 Median",name.W ="Flags")
+dim(a.cdna)
+```
+Note that the `a.cdna` object is analogous to the swirl metadata object
+
+
+### Normalize both arrays and provide MvA plots for each array normalized by the following 3 methods:
+
+no normalization
+
+print-tip loess normalization
+
+scale print-tip normalization using the MAD
+
+Hint: use the `par(mfrow=c(3,1))` function to put the 3 plots for a single patient array on the same page
+```{r}
+# no normalization
+patient1 <- a.cdna[,1]
+patient2 <- a.cdna[,2]
+# print-tip loess normalization 
+patient1.print_tip <- maNorm(patient1, norm="printTipLoess")
+patient2.print_tip <- maNorm(patient2, norm="printTipLoess")
+# scale print-tip normalization using the MAD
+patient1.scale_print_tip <- maNorm(patient1, norm="scalePrintTipMAD")
+patient2.scale_print_tip <- maNorm(patient2, norm="scalePrintTipMAD")
+```
+
+```{r}
+# MvA plot of patient array 1
+par(mfrow=c(1,3))
+maPlot(patient1, lines.func=NULL, legend.func=NULL, 
+	main='no normalization')
+maPlot(patient1.print_tip, lines.func=NULL, legend.func=NULL, 
+	main='print-tip loess normalization')
+maPlot(patient1.scale_print_tip, lines.func=NULL, legend.func=NULL, 
+	main='scale print-tip normalization using the MAD')
+mtext("MvA plot of patient array 1", side=1, line=-40,  outer=FALSE)
+
+# MvA plot of patient array 2
+par(mfrow=c(1,3))
+maPlot(patient2, lines.func=NULL, legend.func=NULL, 
+	main='no normalization')
+maPlot(patient2.print_tip, lines.func=NULL, legend.func=NULL, 
+	main='print-tip loess normalization')
+maPlot(patient2.scale_print_tip, lines.func=NULL, legend.func=NULL, 
+	main='scale print-tip normalization using the MAD')
+mtext("MvA plot of patient array 2", side=1, line=-40,  outer=TRUE)
+```
+
+### Create a data matrix that can be written out to a file
+Each patient array contains 19,200 rows and 2 columns
+
+Using the functions `maM()`, `maGnames()`, and `maLabels()`. 
+
+Get the probe IDs, and assign the probe IDs to the row names
+```{r}
+# create the data matrix for the 2 normalized metadata objects
+mat_print_tip <- data.frame(maM(patient1.print_tip), maM(patient2.print_tip))
+mat_scale_print_tip <- data.frame(maM(patient1.scale_print_tip), maM(patient2.scale_print_tip))
+# get the probe IDs
+probeIDs <- maLabels(maGnames(a.cdna))
+anyDuplicated(probeIDs)
+
+# There're lots of duplicated probe IDs in the original data, 
+# so use make.names(.., unique = TRUE)
+probeIDs <- make.names(probeIDs, unique = TRUE)
+anyDuplicated(probeIDs)
+
+# assign the probe IDs to the row names
+rownames(mat_print_tip) <- probeIDs
+rownames(mat_scale_print_tip) <- probeIDs
+
+knitr::kable(head(mat_print_tip), caption="print-tip loess normalized data")
+knitr::kable(head(mat_scale_print_tip), caption="scale print-tip normalized data")
+```
+
+# Raw Affymetrix .CEL files
+Next, we would like to read in 3 raw Affymetrix .CEL files and normalize them with 2 different algorithms. These 3 arrays represent 3 normal healthy subjects that should have similar expression profiles
+```{r, warning=FALSE, message=FALSE, results=FALSE}
+# Load the following libraries: affy, limma, affydata, affyPLM, and fpc
+library(affy)
+library(limma)
+library(affydata)
+library(affyPLM)
+library(fpc)
+```
+
+### Read 3 `.CEL` files into R
+```{r, warning=FALSE}
+# using the read.ReadAffy() function
+fns <- sort(list.celfiles(path="data\\", full.names=TRUE))
+data.affy <- ReadAffy(filenames=fns, phenoData=NULL)
+data.affy
+```
+
+# RMA and MAS normalization
+Use the function `expresso()` and `exprs()` to create the normalized data
+matrices with 54,675 rows and 3 columns for the 2 different normalization algorithms
+
+Be sure to use `normalize.method="quantiles"`, `summary.method="medianpolish"`, and for
+RMA: `pmcorrect.method="pmonly"`
+MAS: `pmcorrect.method="mas”`
+```{r}
+# This step costs a few minutes
+start_time <- Sys.time()
+
+# RMA
+data.affy.RMA <- expresso(data.affy, 
+	bgcorrect.method="rma", normalize.method="quantiles", 
+	summary.method="medianpolish", pmcorrect.method="pmonly")
+# MAS
+data.affy.MAS <- expresso(data.affy, 
+	bgcorrect.method="rma", normalize.method="quantiles", 
+	summary.method="medianpolish", pmcorrect.method="mas")
+
+end_time <- Sys.time()
+end_time - start_time
+```
+
+Create the normalized data matrices with 54,675 rows and 3 columns
+```{r}
+mat_RMA <- exprs(data.affy.RMA)
+dim(mat_RMA)
+mat_MAS <- exprs(data.affy.MAS)
+dim(mat_MAS)
+```
+
+# Calculate the correlation between the 3 arrays for both normalized data matrices
+Use the `cor()` function.
+
+Since these 3 subjects are all healthy normal individuals, we
+would expect to see somewhat good correlation structure between them all when looking
+across all genes on the array. 
+```{r}
+cor_RMA <- cor(mat_RMA)
+knitr::kable(cor_RMA, caption="RMA normalized data matrices")
+
+cor_MAS <- cor(mat_MAS)
+knitr::kable(cor_MAS, caption="MAS normalized data matrices")
+```
+
+As the correction matrices show, take normal2.CEL as an example,
+
+RMA gives: 0.9766785 1.0000000 0.9913585
+
+MAS gives: 0.9563402 1.0000000 0.9871987
+
+Thus, RMA normalization algorithm has a higher overall correlation structure for these 3 arrays
+
+
+We can also look at their means
+
+```{r}
+apply(cor_RMA,2,mean)
+apply(cor_MAS,2,mean)
+```
+
+On average, RMA normalized data also has a higher correlation for these 3 arrays
+
+
+### End

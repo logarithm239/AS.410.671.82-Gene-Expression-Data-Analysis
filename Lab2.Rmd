@@ -1,0 +1,178 @@
+---
+title: 'Lab #2 Data visualization'
+author: "Xulin Ge"
+date: "Jul 07 2023"
+---
+
+We are going to work with a very popular time course cDNA data set from Paul Spellman’s lab at Stanford [1]. 
+
+This microarray was designed with probes from the yeast Saccharomyces cerevisiae genome. The data set includes 3 different experiments, each with its own time course (each array is a different time point) for measuring transcript levels that are induced by various cyclins. The transcripts that respond to this stimulus are seen to be regulated at the different stages of the cell cycle. The 3 experiments differ by the method that the yeast cultures were synchronized: α factor arrest, elutriation, and arrest of a cdc15 temperature-sensitive mutant. 
+
+The cdc15 time course experiment is the one that we will use in this lab to conduct some simple mathematical manipulations and plots.
+
+
+Ref:
+
+1. Spellman, P. T., Sherlock, G., Zhang, M. Q., Iyer, V. R., Anders, K., Eisen, M. B., Brown, P. O., Botstein, D., & Futcher, B. (1998). Comprehensive identification of cell cycle-regulated genes of the yeast Saccharomyces cerevisiae by microarray hybridization. Molecular biology of the cell, 9(12), 3273–3297. https://doi.org/10.1091/mbc.9.12.3273
+
+```{r, warning=FALSE, message=FALSE}
+# installing/loading the package:
+if(!require(gdata)) {
+  install.packages("gdata"); 
+  require(gdata)
+}
+if(!require(shiny)) {
+  install.packages("shiny"); 
+  require(shiny)
+}
+```
+
+
+```{r, results='hide'}
+# Set the directory
+(WD <- getwd())
+if (!is.null(WD)) setwd(WD)
+```
+
+# Read `spellman.txt` text file into R
+```{r}
+# using the read.table() function
+txt_file <- "spellman.txt"
+spellman_table <- read.table(file=file.path("data", txt_file), header=T, row.names=1)
+```
+
+### Look at the dimensions of the data
+There should be 6,178 genes and 77 arrays/sample
+```{r}
+dim(spellman_table)
+names(spellman_table)
+knitr::kable(head(spellman_table), caption=" SLE B cell data set")
+```
+
+### Isolate only the cdc15 experiment (samples 23-46)
+```{r}
+# Trunk the cdc15 experiments
+cdc15_samples <- c(23:46)
+cdc15 <- spellman_table[cdc15_samples]
+knitr::kable(head(cdc15), caption="cdc15 experiment")
+```
+
+The data contains many missing values
+
+# Calculate a correlation matrix between the time points (use Pearson’s correlation)
+Use the argument `use=pairwise.complete.obs` since all of these arrays have at least one missing value
+```{r}
+# Compute correlation matrix
+Pearsons_cor <- cor(cdc15, use="pairwise.complete.obs")
+knitr::kable(head(Pearsons_cor), caption="correlation matrix")
+```
+
+### Plot the correlation matrix
+Title the plot, label the axes, and provide a legend of the color gradient
+```{r, warning=FALSE, message=FALSE}
+# Load the packages
+library(gplots)
+```
+```{r}
+# Plot
+layout(matrix(c(1,1,1,1,1,1,1,1,2,2), 5, 2, byrow = TRUE))
+par(oma=c(5,7,1,1))
+cx <- rev(colorpanel(25,"yellow","black","blue"))
+leg <- seq(min(Pearsons_cor, na.rm=T), max(Pearsons_cor, na.rm=T), length=10)
+# title the plot, 
+image(Pearsons_cor, 
+	main="Pearson’s correlation matrix for cdc15 experiments", axes=F, col=cx)
+# label the axes 
+axis(1, at=seq(0,1,length=ncol(Pearsons_cor)), 
+	label=dimnames(Pearsons_cor)[[2]], cex.axis=0.9, las=2)
+axis(2, at=seq(0,1,length=ncol(Pearsons_cor)), 
+	label=dimnames(Pearsons_cor)[[2]], cex.axis=0.9, las=2)
+# provide a legend of the color gradient
+# To fix the error: figure margins too large, expand the plot panel 
+par(mar=c(1,1,1,1))
+image(as.matrix(leg), col=cx, axes=F)
+tmp <- round(leg,2)
+axis(1, at=seq(0,1, length=length(leg)), labels=tmp, cex.axis=1)
+```
+
+# Select the gene YAL002W 
+YAL002W, which is VPS8, a membrane-binding component of the CORVET complex; involved in endosomal vesicle tethering and fusion in the endosome to vacuole protein targeting pathway
+
+Then impute the missing values with the row mean
+Make sure to cast the gene to numeric
+
+```{r}
+# Impute the missing values with the row mean
+VPS8 <- cdc15["YAL002W", ]
+mean(as.numeric(VPS8), na.rm=TRUE)
+VPS8[is.na(VPS8)] <- mean(as.numeric(VPS8), na.rm=TRUE)
+VPS8
+# cast the gene to numeric
+y <- as.numeric(VPS8)
+```
+
+### Generate a profile plot of the gene YAL002W
+
+Title the plot, label the axes, and on the x-axis, provide the time points only for each array (no “cdc15_” prefix) so we can visualize the transcript pattern over time
+
+Use `lwd=line width` in the plot command 
+
+```{r}
+# Generate a profile plot 
+# provide the time points only for each array (no “cdc15_” prefix)
+colnames(VPS8)
+x <- c(seq(10, 70, by=20), seq(80, 240, by=10), seq(250, 290, by=20)) 
+x
+
+# Make sure x and y have the same length
+length(x)
+length(y)
+
+# Title the plot, label the axes
+plot(x, y, 
+	xlab="time points", ylab="intensities",    
+	main="gene profile plot, ID = YAL002W") + 
+# Use lwd in the plot command (lwd=line width)
+lines(x, y, lwd=2) + grid()
+```
+
+# Use R shiny to create a simple interactive app
+
+Let’s create a simple shiny app which allows the user to select and correlate any
+time point verse another time point across all genes
+
+To do this, we can create a server and ui function within the same file, paste both into the R session, then call them with:
+
+`>shinyApp(ui = ui, server = server)`
+
+R shiny app cannot be open in static R Markdown. Use RStudio to run the app.
+```{r}
+# Shiny app for cdc15 data
+library(shiny)
+# ui.R
+ui <- shinyUI(pageWithSidebar(
+	headerPanel('cdc15 time course experiment'),
+	sidebarPanel(
+		selectInput('xcol', 'X Variable', names(cdc15)),
+		selectInput('ycol', 'Y Variable', names(cdc15),
+		selected=names(cdc15)[[2]]),
+		# customize point color and symbol
+		selectInput('varColor', 'Point color (only for symbol 21)', c("red","green","blue","black")), 
+		numericInput('pch', 'Plotting symbols', 21, min=1, max=21) 
+		),
+	mainPanel( plotOutput('plot1') )
+))
+
+# server.R
+server <- shinyServer(function(input, output, session) {
+	# Combine the selected variables into a new data frame
+	selectedData <- reactive({ cdc15[, c(input$xcol, input$ycol)] })
+	colors <- reactive({input$varColor })
+	symbols <- reactive({input$pch })
+	output$plot1 <- renderPlot({ par(mar=c(5.1, 4.1, 0, 1))
+		plot(selectedData(), col=1, bg=colors(), pch=symbols(), cex=0.5) })
+})
+
+shinyApp(ui=ui, server=server)
+```
+### End

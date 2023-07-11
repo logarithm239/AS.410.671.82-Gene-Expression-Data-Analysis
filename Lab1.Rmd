@@ -4,6 +4,8 @@ author: "Xulin Ge"
 date: "Jul 02 2023"
 ---
 
+We will be working with a data set that is comparing the transcript profiles from peripheral B lymphocytes between patients with systemic lupus erythematosus (SLE) and normal healthy controls
+
 
 ```{r, results='hide'}
 # Set the directory

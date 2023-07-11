@@ -1,0 +1,222 @@
+---
+title: 'Lab #3 Power and sample size'
+author: "Xulin Ge"
+date: "Jul 08 2023"
+---
+
+We will be working with a data set from Alizadeh et al. at Stanford [1]. 
+
+In this study, the investigators were evaluating diffuse large B-cell lymphoma (DLBCL). Using expression profiling and hierarchical clustering (a topic that we will visit later in this class), they were able to identify 2 distinct forms of DLBCL that indicate different stages of B-cell differentiation. “One type expressed genes characteristic of germinal centre B cells (‘germinal centre B-like DLBCL’); the second type expressed genes normally induced during in vitro activation of peripheral blood B cells (‘activated B-like DLBCL’).” They also found that the germinal centre B-like DLBCL patients had a better survival rate.
+
+We will use this data set to evaluate the power and sample size in this experiment. We will also look for the necessary number of samples to appropriately power the study.
+
+First we will calculate the power and n required using a single gene calculation for illustration of the formula, then we will conduct a more multivariate summary that gives an idea of the power or n required for a specific percentage of genes/probes in the experiment. 
+
+Remember that when we calculate these statistics for a microarray, we are dealing with more than a single variable, so general power formulas do not apply when attempting to summarize all genes/probes on an array.
+
+
+Ref:
+
+1. Alizadeh, A. A., Eisen, M. B., Davis, R. E., Ma, C., Lossos, I. S., Rosenwald, A., Boldrick, J. C., Sabet, H., Tran, T., Yu, X., Powell, J. I., Yang, L., Marti, G. E., Moore, T., Hudson, J., Jr, Lu, L., Lewis, D. B., Tibshirani, R., Sherlock, G., Chan, W. C., … Staudt, L. M. (2000). Distinct types of diffuse large B-cell lymphoma identified by gene expression profiling. Nature, 403(6769), 503–511. https://doi.org/10.1038/35000501
+
+
+```{r, warning=FALSE, message=FALSE}
+# installing/loading the package:
+if(!require(pwr)) {
+  install.packages("pwr"); 
+  require(pwr)
+}
+if(!require(gdata)) {
+  install.packages("gdata"); 
+  require(gdata)
+}
+if(!require(ssize)) {
+  if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+  BiocManager::install("ssize"); 
+  require(ssize)
+}
+```
+
+
+```{r, results='hide'}
+# Set the directory
+(WD <- getwd())
+if (!is.null(WD)) setwd(WD)
+```
+
+# Read files into R
+### Read Eisen DLBCL data set `eisen.txt` into R
+Note this data frame contains missing values because we’re working with cDNA data
+```{r}
+# using the read.table() function
+eisen_file <- "eisen.txt"
+eisen_table <- read.table(file=file.path("data", eisen_file), 
+	header=T, na.strings="NA", blank.lines.skip=F, row.names=1)
+```
+
+### Look at the dimensions of the data
+```{r}
+dim(eisen_table)
+knitr::kable(head(eisen_table), caption="Eisen DLBCL data set")
+```
+
+### Read class label file `eisenClasses.txt` into R
+```{r}
+eisenclasses <- "eisenClasses.txt"
+eisen_classes <- read.table(file=file.path("data", eisenclasses), header=T)
+knitr::kable(t(eisen_classes), caption="eisen class label")
+```
+
+### Subset (re-index or reorder the column headers) the data frame with the class labels
+If you look at the original column name order with `dimnames(dat)[[2]]` both before and after you reorder them, you will see what this has done.
+```{r}
+eisen_frame <- as.data.frame(eisen_table)
+
+# look at the column name order before reordering
+dimnames(eisen_frame)[[2]]
+
+# Reorder the column headers
+cl <- as.character(eisen_classes[,2])
+eisen_frame <- eisen_frame[,cl]
+
+# look at the column name order after reordering
+dimnames(eisen_frame)[[2]]
+```
+
+# Pick a gene, remove cells that have "NAs", and plot the values for both classes with a boxplot and a histogram
+From the eisen_classes table, we know that there are two classes in the dataset. One from 1 to 19 and the other from 20 to 39.
+```{r}
+# Split up classes
+# Class 1
+gc <- cl[1:19]
+gc
+# Class 2
+act <- cl[20:39]
+act
+```
+
+Here, we will pick the gene #7000. And split up classes and look at both samples for gene #7000
+```{r}
+# Pick gene #7000
+# split up classes and look at both samples for gene #7000
+x <- as.numeric(eisen_frame[8000, gc])
+y <- as.numeric(eisen_frame[8000, act])
+
+# remove cells that have "NAs"
+x <- x[!is.na(x)]
+y <- y[!is.na(y)]
+
+# Plot the values for both classes with with a boxplot
+boxplot(x, y, col=c("red","blue"), main='boxplot for eisen data gene #7000',
+	axes=F, ylab="Expression")
+axis(2)
+axis(1, at=c(1,2), c("GC Class","ACT Class"))
+
+# Plot the values for both classes with with a histogram
+par(mfrow=c(1,2))
+hist(x, col="red", main='histogram for gene #7000 GC Class', xlab="Expression")
+hist(y, col="blue", main='histogram for gene #7000 ACT Class', xlab="Expression")
+```
+
+
+### Calculate the pooled variance
+```{r, warning=FALSE, message=FALSE}
+# Load the packages
+library(pwr)
+```
+```{r}
+# size of each group
+nx <- length(x)
+ny <- length(y)
+# Calculate the pooled variance as coded in the lecture notes
+pool.var <- (((nx-1)*var(x)) + ((ny-1)*var(y)))/(nx+ny-2)
+pool.var 
+```
+
+### Calculate the minimum sample size necessary to detect a 1.5 fold difference (at 80% power and 99% confidence)
+```{r}
+dif.fold <- log2(1.5)/sqrt(pool.var)
+pl.ss3 <- pwr.t.test(d=dif.fold, sig.level=.01, power=0.8, type="two.sample")
+pl.ss3
+```
+
+### Calculate the sample size required for the selected gene 
+Using the empirically determined delta between the two groups, assuming 99% confidence and 80% power
+```{r}
+# empirically determined delta
+dif <- abs(mean(x)-mean(y))/sqrt(pool.var)
+dif
+pl.ss <- pwr.t.test(d=dif, sig.level=.01, power=0.8, type="two.sample")
+pl.ss
+```
+
+The empirically determined delta shows we need at least n = 49 samples for gene #7000
+
+
+# Calculate the standard deviation for each gene in the matrix 
+(Hint: use the `na.rm=T` argument)
+```{r}
+std <- apply(eisen_frame, 1, sd, na.rm=T)
+```
+
+### plot a histogram of the standard deviations
+```{r}
+hist(std,n=20, col="cyan", border="blue", 
+	main="Histogram of Standard Deviations for 13,412 genes", 
+	xlab="Standard Deviations")
+dens <- density(std)	
+lines(dens$x, dens$y*par("usr")[4]/max(dens$y),col="red",lwd=2)
+```
+
+
+# Calculate and plot a proportion of genes vs. sample size graph 
+To get an idea of the number of genes that have an adequate sample size for confidence=95%, effect size=3 (log2 transform for the function), and power=80%
+
+```{r, warning=FALSE, message=FALSE}
+# load the ssize and gdata libraries
+library(gdata)
+library(ssize)
+```
+
+confidence=95%, effect size=3, and power=80%
+```{r, warning=FALSE, message=FALSE, results=FALSE}
+fold.change <- 3.0
+sig.level <- 0.05
+power <- 0.8
+all.size <- ssize(sd=std, delta=log2(fold.change), sig.level=sig.level, power=power)
+```
+
+Plot a proportion of genes vs. sample size graph
+```{r}
+ssize.plot(all.size, lwd=2, col="magenta", xlim=c(1,50))
+xmax <- par("usr")[2]-1;
+ymin <- par("usr")[3] + 0.05
+legend(x=xmax, y=ymin, 
+	legend= strsplit( paste(
+		"fold change=",fold.change,",", 
+		"alpha=", sig.level, ",", 
+		"power=",power,",", 
+		"# genes=", length(std), 
+		sep=''), "," )[[1]], 
+	xjust=1, yjust=0, cex=0.5)
+title("Proportion of genes vs. sample size graph") 
+```
+
+The left end of the curve is too small. Enlarge the beginning part.
+```{r}
+ssize.plot(all.size, lwd=2, col="magenta", xlim=c(1,10), ylim=c(0,0.1))
+xmax <- par("usr")[2]-1;
+ymin <- par("usr")[3] + 0.05
+legend(x=xmax, y=ymin, 
+	legend= strsplit( paste(
+		"fold change=",fold.change,",", 
+		"alpha=", sig.level, ",", 
+		"power=",power,",", 
+		"# genes=", length(std), 
+		sep=''), "," )[[1]], 
+	xjust=1.9, yjust=0.5, cex=0.5)
+title("Proportion of genes vs. sample size graph (enlarged)") 
+```
+
+### End
