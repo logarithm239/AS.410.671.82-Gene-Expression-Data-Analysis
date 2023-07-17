@@ -1,0 +1,216 @@
+---
+title: 'Lab #5 Differential expression'
+author: "Xulin Ge"
+date: "Jul 16 2023"
+---
+
+We will be working with a small data set run on the rat RAE230A Affymetrix array
+
+The study was to determine differences in mRNA levels between brain hippocampi of animals fed a ketogenic diet (KD) and animals fed a control diet. “KD is an anticonvulsant treatment used to manage medically intractable epilepsies”. The differences between the 2 groups of rats can provide biological insight into the genes that are regulated due to the treatment
+
+We are going to conduct a two-sample test for each gene/probe on the array and then identify those genes/probes that are differentially expressed between the 2 rat diet groups and plot the results with a couple of different visual summaries.
+
+
+```{r, warning=FALSE, message=FALSE}
+# installing/loading the package:
+
+# No package is required in this lab
+```
+```{r, results='hide'}
+# Set the directory
+(WD <- getwd())
+if (!is.null(WD)) setwd(WD)
+```
+
+# Read data set into R
+Load the rat ketogenic brain data set
+```{r}
+# using the read.table() function
+txt_file <- "rat_KD.txt"
+dat <- read.table(file=file.path("data", txt_file), header=T, row.names=1)
+colnames(dat)
+knitr::kable(head(dat), caption="rat ketogenic brain data set")
+```
+
+# Student’s t-test
+First log2 the data
+```{r}
+dat2 <- log2(dat)
+```
+
+From the column names listed above, we know that column 1:6 is control diet class and column 7:11 is ketogenic diet class. So, we can use the `names()` function to determine where one class ends and the other begins
+```{r}
+# two diet classes determined by names() function
+cl <- names(dat2) 
+ctrl <- cl[1:6]
+KO <- cl[7:11]
+```
+
+Then use the Student’s t-test function to calculate the changing genes between the control diet and ketogenic diet classes
+```{r}
+# function to calculate Student’s two-sample t-test on all genes at once
+# function returns the p-value for the test
+# NAs are removed for each test
+# s1 and s2 are dimensions of the two samples
+# run function on each gene in the data frame
+t.test.all.genes <- function(x,s1,s2) {
+	x1 <- x[s1]
+	x2 <- x[s2]
+	x1 <- as.numeric(x1)
+	x2 <- as.numeric(x2)
+	t.out <- t.test(x1,x2, alternative="two.sided",var.equal=T)
+	out <- as.numeric(t.out$p.value)
+	return(out)
+}
+
+# use the Student’s t-test function to calculate the changing genes 
+# between the control diet and ketogenic diet classes
+pv <- apply(dat2, 1, t.test.all.genes, s1=ctrl, s2=KO)
+knitr::kable(head(pv), caption="p-values using a Student's t-test")
+```
+
+# Histogram of the p-values
+```{r}
+par(mfrow=c(1,2))
+hist(pv, col="lightblue", xlab="p-values", 
+	main="Student’s t-test P-value between\ncontrol and ketogenic diets", cex.main=0.9)
+abline(v=.05, col=2, lwd=2)
+hist(-log10(pv), col="lightblue", xlab="log10(p-values)", 
+	main="Student’s t-test -log10(pv) between\ncontrol and ketogenic diets", cex.main=0.9)
+abline(v= -log10(.05), col=2, lwd=2)
+```
+
+### Report how many probesets have a p<.05 and p<.01
+```{r}
+length(pv[pv<0.05])
+length(pv[pv<0.01])
+```
+
+5160 probesets have a p value <.05 and 2414 probesets have a p value <.01.
+
+
+### Bonferroni correction - a very conservative p-value thresholding method to account for multiple testing:
+
+Divide an alpha of 0.05 by the total number of probesets and report how many probesets have a p-value less than this value
+```{r}
+alpha <- 0.05/length(dat2[,1])
+alpha
+
+length(pv[pv<alpha])
+```
+
+12 probesets have a p-value less than this alpha value
+
+### Calculate the mean for each gene
+```{r}
+ctrl.m <- apply(dat2[,ctrl], 1, mean, na.rm=T)
+KO.m <- apply(dat2[,KO], 1, mean, na.rm=T)
+```
+
+### Calculate the fold change between the groups (control vs. ketogenic diet)
+```{r}
+fold <- ctrl.m-KO.m
+knitr::kable(head(fold), caption="fold change between the control vs. ketogenic diet groups")
+```
+
+### Report the maximum and minimum fold change value on the linear scale
+```{r}
+summary(fold)
+
+# 2^log scale value
+fold.linear <- 2^fold
+max(fold.linear)
+min(fold.linear)
+
+2^5.78543
+2^-3.6011
+```
+
+On the linear scale, the maximum fold change is 55.15521 and minimum fold change is 0.08240443
+
+### Report the probesets that meets: 
+
+1. a p-value less than the Bonferroni threshold used above and 
+2. |fold change|>2
+
+Note that we were on a log2 scale for the fold change and we are looking for a linear |fold| of 2
+```{r}
+pv.filter <- pv[pv<alpha & abs(fold.linear)>2]
+length(pv.filter)
+```
+
+There are 6 probesets meet the requirements.
+
+### Go to NetAffx or another database source
+Identify gene information for the probesets that meet the Bonferroni threshold requirements. What is the general biological function that associates with these probesets?
+
+```{r}
+names(pv.filter)
+```
+
+
+Search these probesets on biogps:
+
+<br>
+
+1367553_x_at
+
+Hbb (hemoglobin subunit beta)
+
+http://biogps.org/#goto=genereport&id=24440
+
+<br>
+
+1370239_at
+
+1370240_x_at
+
+1388608_x_at
+
+Hba-a2 (hemoglobin alpha, adult chain 2)
+
+http://biogps.org/#goto=genereport&id=360504
+
+<br>
+
+1371102_x_at
+
+1371245_a_at
+
+Hbb-bs (hemoglobin, beta adult s chain)
+
+http://biogps.org/#goto=genereport&id=689064
+
+<br>
+
+We can see that these 6 probesets are all for hemoglobins (biological function) in rat, with 3 probesets mapping to the same gene
+
+# Volcano plot
+### Transform the p-value (-1*log10(p-value)) 
+Make sure to use a log10 transformation for the p-value and a log2 transformation for the fold change
+```{r}
+# fold is already in log2 scale, transform pv
+p.trans <- -1*log10(pv)
+```
+
+### Create a volcano plot with the p-value and fold change vectors
+
+Draw the horizontal lines at fold values of 2 and -2 (log2 value=1) and the vertical p-value threshold line at p=.05 (remember that it is transformed in the plot).
+
+```{r}
+# create a volcano plot with the p-value and fold change vectors
+plot(range(p.trans),range(fold), type='n', xlab='-1*log10(p-value)', ylab='fold change (log2 scale)', 
+	main='Volcano Plot\ncontrol and ketogenic diets')
+points(p.trans,fold,col='black',pch=21,bg=1)
+
+# Draw the horizontal lines at fold values of 2 and -2 (log2 value=1) and 
+# the vertical p-value threshold line at p=.05 (remember that it is transformed in the plot)
+points(p.trans[(p.trans> -log10(.05)&fold>log2(2))],fold[(p.trans> -log10(.05)&fold>log2(2))],col=1,bg=2,pch=21)
+points(p.trans[(p.trans> -log10(.05)&fold< -log2(2))],fold[(p.trans> -log10(.05)&fold< -log2(2))],col=1,bg=3,pch=21)
+abline(v= -log10(.05))
+abline(h= -log2(2))
+abline(h=log2(2))
+```
+
+
+### End
